@@ -18,6 +18,15 @@
 #define RETRY_DELAY_SECONDS 1 // Delay between retries in seconds
 #define STRING_LENGTH 1024
 
+// Structure to hold process thread information
+typedef struct {
+  char hostname[MAX_HOSTNAME_LENGTH]; // Hostname of this process
+  pthread_mutex_t mutex; // Mutex for thread synchronization
+  pthread_cond_t cond; // Condition variable for thread synchronization
+  char strbuf[STRING_LENGTH]; // Buffer for message to be sent
+  int ready; // Flag to indicate if message is ready to be sent
+} ProcessThread;
+
 // Structure to hold process information
 typedef struct {
   int proc_id; // UID of the process
@@ -25,13 +34,9 @@ typedef struct {
   int predecessor; // UID of the predecessor process
   int successor; // UID of the successor process
   char hostname[MAX_HOSTNAME_LENGTH]; // Hostname of this process
-  char all_hostnames[MAX_PROCESSES][MAX_HOSTNAME_LENGTH]; // Hostnames of all processes
+  ProcessThread all_procs[MAX_PROCESSES]; // All process threads
   float tok_delay; // Delay between token transmissions in microseconds
   float mark_delay; // Delay between mark transmissions in microseconds
-  pthread_mutex_t mutex;
-  pthread_cond_t cond;
-  char strbuf[STRING_LENGTH];
-  int ready;
 } ProcessInfo;
 
 // Thread dealing with TCP server socket
@@ -49,32 +54,32 @@ void *server(void *arg) {
   hints.ai_flags = AI_PASSIVE;
 
   if (getaddrinfo(NULL, port_num, &hints, &res) != 0) {
-    fprintf(stderr, "Server Side Error: Could not get address info for %s\n", process->hostname);
+    fprintf(stderr, "Server side error: Could not get address info for %s\n", process->hostname);
     exit(1);
   }
 
   // Create socket file descriptor
   if ((sock_fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol)) < 0) {
-    fprintf(stderr, "Server Side Error: Could not open socket for %s\n", process->hostname);
+    fprintf(stderr, "Server side error: Could not open socket for %s\n", process->hostname);
     exit(1);
   }
 
   // Set socket options
   int opt = 1;
   if (setsockopt(sock_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
-      perror("Server side error setting socket options");
+      perror("Server side error: setting socket options");
       exit(1);
   }
 
   // Bind socket with server address
   if (bind(sock_fd, res->ai_addr, res->ai_addrlen) < 0) {
-    perror("Server side error binding socket");
+    perror("Server side error: binding socket");
     exit(1);
   }
 
   // Listen for incoming connections
   if (listen(sock_fd, BACKLOG) < 0) {
-    perror("Server side error listening on socket");
+    perror("Server side error: listening on socket");
     exit(1);
   }
 
@@ -82,80 +87,51 @@ void *server(void *arg) {
   struct sockaddr_storage client_addr;
   int addr_size = sizeof(client_addr);
   int new_fd;
-  char clients[MAX_PROCESSES][MAX_HOSTNAME_LENGTH];
-  strncpy(clients[process->proc_id - 1], process->hostname, MAX_HOSTNAME_LENGTH - 1);
-  bool all_clients_connected = false;
 
-  // Wait for all clients to connect
-//  while (all_clients_connected == false) {
-    // Accept connection
-    if ((new_fd = accept(sock_fd, (struct sockaddr *)&client_addr, (socklen_t *)&addr_size)) < 0) {
-      perror("Server side error accepting connection");
+  // Accept connection
+  if ((new_fd = accept(sock_fd, (struct sockaddr *)&client_addr, (socklen_t *)&addr_size)) < 0) {
+    perror("Server side error accepting connection");
+    exit(1);
+  }
+
+  while (1) {
+    // Receive message from client
+    char msg[MAX_HOSTNAME_LENGTH];
+    char rec_msg[MAX_HOSTNAME_LENGTH];
+    char new_msg[MAX_HOSTNAME_LENGTH];
+
+    if (recv(new_fd, msg, MAX_HOSTNAME_LENGTH, 0) < 0) {
+      perror("Server side error: receiving message");
       exit(1);
     }
 
-    while (1) {
-      // Receive message from client
-      char msg[MAX_HOSTNAME_LENGTH];
-      char rec_msg[MAX_HOSTNAME_LENGTH];
-      char new_msg[MAX_HOSTNAME_LENGTH];
+    // Process msg
+    char *result = strstr(msg, "\"token\"");
+    if (result != NULL) {
+      process->state++; // update state
 
-      if (recv(new_fd, msg, MAX_HOSTNAME_LENGTH, 0) < 0) {
-        perror("Server side error receiving message");
-        exit(1);
-      }
+      // Print proccess id and state
+      fprintf(stderr, "{proc_id: %d, state: %d}\n", process->proc_id, process->state);
 
-      // Process msg
-      // {proc_id: ID, sender: SENDER_ID, receiver: RECEIVER_ID, message:"token"}
-      char *result = strstr(msg, "\"token\"");
-      if (result != NULL) {
-        process->state++; // update state
+      // Print message received
+      sprintf(rec_msg, "{proc_id: %d, sender: %d, receiver: %d, message:\"token\"}\n",
+              process->proc_id, process->predecessor, process->proc_id);
+      fprintf(stderr, "%s", rec_msg);
 
-        // Print proccess id and state
-        fprintf(stderr, "proc_id: %d, state: %d\n", process->proc_id, process->state);
+      sprintf(new_msg, "{proc_id: %d, sender: %d, receiver: %d, message:\"token\"}\n",
+              process->proc_id, process->proc_id, process->successor);
 
-        // Print message received
-        sprintf(rec_msg, "{\"proc_id\": %d, \"sender\": %d, \"receiver\": %d, \"message\":\"token\"}\n",
-                process->proc_id, process->predecessor, process->proc_id);
-        fprintf(stderr, "%s", msg);
+      usleep(process->tok_delay); // sleep for tok_delay seconds
 
-        sprintf(new_msg, "{\"proc_id\": %d, \"sender\": %d, \"receiver\": %d, \"message\":\"token\"}\n",
-                process->proc_id, process->proc_id, process->successor);
-
-        usleep(process->tok_delay); // sleep for tok_delay seconds
-
-        // Send message to successor
-        pthread_mutex_lock(&process->mutex);
-        strcpy(process->strbuf, new_msg);
-        process->ready = 1;
-        pthread_cond_signal(&process->cond);
-        pthread_mutex_unlock(&process->mutex);
-      }
+      // Send message to this server's client to send to successor
+      ProcessThread *process_thread = &process->all_procs[process->proc_id - 1];
+      pthread_mutex_lock(&process_thread->mutex);
+      strcpy(process_thread->strbuf, new_msg);
+      process_thread->ready = 1;
+      pthread_cond_signal(&process_thread->cond);
+      pthread_mutex_unlock(&process_thread->mutex);
     }
-    // Check if the client is already connected
-//    for (int i = 0; i < MAX_PROCESSES; i++) {
-//      if (clients[i] == NULL && strcmp(buf, process.all_hostnames[i]) == 0) {
-//        strncpy(clients[i], buf, MAX_HOSTNAME_LENGTH - 1);
-//        break;
-//      }
-//    }
-
-    // Check if all clients are connected
-    for (int i = 0; i < MAX_PROCESSES; i++) {
-      // If a client is not connected, break
-      if (clients[i] == NULL || strcmp(clients[i], process->all_hostnames[i]) != 0) {
-        break;
-      }
-
-      // If all clients are connected, set flag to true
-      if (i == MAX_PROCESSES - 1) {
-        all_clients_connected = true;
-      }
-    }
-//  }
-
-  // Print "READY" to stderr when message is received from all programs
-  fprintf(stderr, "READY\n");
+  }
 
   // Free memory and close socket before exiting
   freeaddrinfo(res);
@@ -170,6 +146,7 @@ void *client(void *arg) {
   char port_num[PORT_NUM_STR_LEN];
   sprintf(port_num, "%d", PORT); // Convert port number to string
   struct addrinfo hints, *res;
+  bool start_tok_pass = process->state == 1;
 
   sleep(1); // wait for servers to come up
 
@@ -179,7 +156,7 @@ void *client(void *arg) {
   hints.ai_socktype = SOCK_STREAM;
 
   // Get address info
-  const char *successor_name = process->all_hostnames[process->successor - 1];
+  const char *successor_name = process->all_procs[process->successor - 1].hostname;
   if (getaddrinfo(successor_name, port_num, &hints, &res) != 0) {
     fprintf(stderr, "Client side error: Could not get address info for %s\n", successor_name);
     exit(1);
@@ -198,9 +175,9 @@ void *client(void *arg) {
   }
 
   // If state is 1, send token to successor to start the ring
-  if (process->state == 1) {
+  if (start_tok_pass) {
       char msg[STRING_LENGTH];
-      sprintf(msg, "{\"proc_id\": %d, \"sender\": %d, \"receiver\": %d, \"message\":\"token\"}\n",
+      sprintf(msg, "{proc_id: %d, sender: %d, receiver: %d, message:\"token\"}\n",
               process->proc_id, process->proc_id, process->successor);
 
       fprintf(stderr, "%s", msg);
@@ -214,82 +191,28 @@ void *client(void *arg) {
 
   while (1) {
     // Wait for data from reader
-    pthread_mutex_lock(&process->mutex);
-    while (!process->ready) {
-      pthread_cond_wait(&process->cond, &process->mutex); // Wait for signal
+    ProcessThread *process_thread = &process->all_procs[process->proc_id - 1];
+    pthread_mutex_lock(&process_thread->mutex);
+
+    while (!process_thread->ready) {
+      pthread_cond_wait(&process_thread->cond, &process_thread->mutex); // Wait for signal
     }
-    process->ready = 0; // Reset the flag for future use
-    pthread_mutex_unlock(&process->mutex);
+
+    process_thread->ready = 0; // Reset the flag for future use
+    pthread_mutex_unlock(&process_thread->mutex);
+
+    // Print message to be sent
+    fprintf(stderr, "%s", process_thread->strbuf);
 
     // Send message to server
-    fprintf(stderr, "%s", process->strbuf);
-    if (send(sock_fd, process->strbuf, strlen(process->strbuf), 0) < 0) {
+    if (send(sock_fd, process_thread->strbuf, strlen(process_thread->strbuf), 0) < 0) {
       fprintf(stderr, "Client side error: Could not send message for %s\n", successor_name);
       exit(1);
     }
   }
 
-  printf("Client sent message to %s \n", successor_name);
   freeaddrinfo(res);
   close(sock_fd);
-
-//  for (int i = 0; i < MAX_PROCESSES; i++) {
-//    const char *serv_name = process.all_hostnames[i];
-//
-//    if (strcmp(serv_name, process.hostname) == 0) {
-//      continue;
-//    }
-//
-//    int retries = 0;
-//    while (retries < MAX_RETRIES) {
-//      // Get address info
-//      if (getaddrinfo(serv_name, port_num, &hints, &res) != 0) {
-//        fprintf(stderr, "Client side error: Could not get address info for %s\n", serv_name);
-//        retries++;
-//        sleep(RETRY_DELAY_SECONDS);
-//        continue;
-//      }
-//
-//      // Create socket file descriptor
-//      if ((sock_fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol)) < 0) {
-//        fprintf(stderr, "Client side error: Could not open socket for %s\n", serv_name);
-//        retries++;
-//        sleep(RETRY_DELAY_SECONDS);
-//        freeaddrinfo(res);
-//        continue;
-//      }
-//
-//      // Connect to server
-//      if (connect(sock_fd, res->ai_addr, res->ai_addrlen) < 0) {
-//        fprintf(stderr, "Client side error: Could not connect to %s\n", serv_name);
-//        retries++;
-//        sleep(RETRY_DELAY_SECONDS);
-//        freeaddrinfo(res);
-//        close(sock_fd);
-//        continue;
-//      }
-//
-//      // Send message to server
-//      if (send(sock_fd, process.hostname, strlen(process.hostname), 0) < 0) {
-//        fprintf(stderr, "Client side error: Could not send message for %s\n", serv_name);
-//        retries++;
-//        sleep(RETRY_DELAY_SECONDS);
-//        freeaddrinfo(res);
-//        close(sock_fd);
-//        continue;
-//      }
-//
-//      printf("Client sent message to %s \n", serv_name);
-//      freeaddrinfo(res);
-//      close(sock_fd);
-//      break;
-//    }
-//
-//    if (retries == MAX_RETRIES) {
-//      fprintf(stderr, "Client side error: Max retries reached for %s. Exiting.\n", serv_name);
-//    }
-//  }
-
   return NULL;
 }
 
@@ -372,7 +295,9 @@ int main(int argc, char *argv[]) {
     }
 
     // Store the hostname
-    strcpy(process.all_hostnames[line_num], line);
+    ProcessThread process_thread;
+    strcpy(process_thread.hostname, line);
+    process.all_procs[line_num] = process_thread;
 
     // Check if this is the current process's hostname
     if (strcmp(line, process.hostname) == 0) {
@@ -409,9 +334,19 @@ int main(int argc, char *argv[]) {
   pthread_t client_thread;
 
   // Initialize mutex and condition variable
-  pthread_mutex_init(&process.mutex, NULL);
-  pthread_cond_init(&process.cond, NULL);
-  process.ready = 0;
+  if (pthread_mutex_init(&process.all_procs[process.proc_id - 1].mutex, NULL) != 0) {
+    fprintf(stderr, "Error initializing mutex for %s\n",
+            process.all_procs[process.proc_id - 1].hostname);
+    exit(1);
+  }
+
+  if (pthread_cond_init(&process.all_procs[process.proc_id - 1].cond, NULL) != 0) {
+    fprintf(stderr, "Error initializing condition variable for %s\n",
+            process.all_procs[process.proc_id - 1].hostname);
+    exit(1);
+  }
+
+  process.all_procs[process.proc_id - 1].ready = 0;
 
   // Create server thread
   if (pthread_create(&server_thread, NULL, server, &process) != 0) {
