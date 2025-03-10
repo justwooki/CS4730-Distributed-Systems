@@ -8,6 +8,8 @@ import java.util.stream.Collectors;
  * Utility class to make life easier.
  */
 class Util {
+  protected static final int BUFFER_SIZE = 1024;
+
   /**
    * Get the hostname of a socket.
    *
@@ -65,6 +67,20 @@ class Util {
   protected static String dequeueMessage(BlockingQueue<String> queue) {
     try {
       return queue.take();
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new RuntimeException("Client handler error: Thread interrupted");
+    }
+  }
+
+  /**
+   * Sleep for a given number of milliseconds.
+   *
+   * @param ms the number of milliseconds to sleep
+   */
+  protected static void sleep(int ms) {
+    try {
+      Thread.sleep(ms);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       throw new RuntimeException("Client handler error: Thread interrupted");

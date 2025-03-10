@@ -109,17 +109,12 @@ public class Process {
   }
 
   public void start() {
-    try{
-      Thread.sleep(this.startDelay * 1000L);
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      throw new RuntimeException("Process error: Thread interrupted");
-    }
+    Util.sleep(this.startDelay * 1000);
 
     BlockingQueue<String> queue = new LinkedBlockingQueue<>();
 
     Thread serverThread = new Thread(() -> new Server(queue, this.hostname, this.peerId,
-            this.membership, this.port, this.peerOrder, this.leaderId).start());
+            this.membership, this.port, this.peerOrder, this.leaderId, this.crashDelay).start());
     Thread clientThread = new Thread(() -> new Client(queue, this.hostname, this.peerId,
             this.membership, this.port, this.peerOrder, this.leaderId).start());
 

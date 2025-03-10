@@ -28,8 +28,13 @@ public class Client {
 
   public void start() {
     try {
-      Socket socket = new Socket(peerOrder[leaderId.get() - 1], port);
+      Socket socket = new Socket(this.peerOrder[this.leaderId.get() - 1], this.port);
       DataOutputStream out = new DataOutputStream(socket.getOutputStream());
+
+      // start sending heartbeat messages
+      int heartbeatInterval = 5;
+      HeartbeatSender heartbeatSender = new HeartbeatSender(this.port, heartbeatInterval);
+      heartbeatSender.start();
 
       out.writeUTF("JOIN");
 

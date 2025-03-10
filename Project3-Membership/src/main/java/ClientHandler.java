@@ -2,9 +2,9 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.Socket;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Queue;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class ClientHandler implements Runnable {
@@ -16,15 +16,16 @@ public class ClientHandler implements Runnable {
   private final int port;
   private final String[] peerOrder;
   private final AtomicInteger leaderId;
+  private final int crashDelay;
   private final String clientHostname;
   private final int clientId;
   private final DataInputStream in;
   private final DataOutputStream out;
-  private final List<RequestMessage> reqLog;
+  private final Queue<RequestMessage> reqLog;
 
   public ClientHandler(BlockingQueue<String> queue, String hostname, int peerId,
                        Socket clientSocket, Membership membership, int port, String[] peerOrder,
-                       AtomicInteger leaderId) {
+                       AtomicInteger leaderId, int crashDelay, Queue<RequestMessage> reqLog) {
     this.queue = queue;
     this.hostname = hostname;
     this.peerId = peerId;
@@ -33,6 +34,7 @@ public class ClientHandler implements Runnable {
     this.port = port;
     this.peerOrder = peerOrder;
     this.leaderId = leaderId;
+    this.crashDelay = crashDelay;
     this.clientHostname = Util.getHostname(this.clientSocket);
 
     int clientId = 0;
@@ -54,7 +56,7 @@ public class ClientHandler implements Runnable {
       throw new RuntimeException("Client handler error: " + e.getMessage());
     }
 
-    this.reqLog = new ArrayList<>();
+    this.reqLog = reqLog;
   }
 
   @Override
@@ -83,8 +85,12 @@ public class ClientHandler implements Runnable {
     String[] parts = msg.split(":");
     switch (parts[0]) {
       case "JOIN" -> {
-        Util.queueMessage(this.queue, buildReqMessage()); // broadcast REQ message
-        waitForAllOkays(); // wait for all OK messages from all other peers
+        // no need to send REQ message if there aren't other peers apart from the leader
+        if (this.membership.getPeers().size() > 1) {
+          Util.queueMessage(this.queue, buildReqMessage()); // broadcast REQ message
+          waitForAllOkays(); // wait for all OK messages from all other peers
+        }
+
         this.membership.addPeer(this.clientId); // update membership
         Util.queueMessage(this.queue, buildNewViewMessage()); // broadcast NEWVIEW message
       }
@@ -105,6 +111,9 @@ public class ClientHandler implements Runnable {
         System.err.println("{peer_id: " + this.peerId + ", view_id: " +
                 this.membership.getViewId() + ", peers: " +
                 Util.listToString(this.membership.getPeers()) + "}");
+
+        // if the crash delay is provided, crash, else the process will continue running
+        crash();
       }
       default -> throw new IllegalArgumentException("Client handler error: Invalid message");
     }
@@ -120,6 +129,7 @@ public class ClientHandler implements Runnable {
     int requestId = this.reqLog.size() + 1;
     int viewId = this.membership.getViewId();
     String operationType = "ADD";
+    this.reqLog.add(new RequestMessage(requestId, viewId, operationType));
     return "REQ:" + requestId + ":" + viewId + ":" + operationType;
   }
 
@@ -142,5 +152,18 @@ public class ClientHandler implements Runnable {
       confirmationMsg = this.queue.peek();
     }
     Util.dequeueMessage(this.queue);
+  }
+
+  /**
+   * Crash process if the crash delay is provided. If not, nothing happens.
+   */
+  private void crash() {
+    if (this.crashDelay != -1) {
+      Util.sleep(this.crashDelay * 1000);
+      System.err.println("{peer_id: " + this.peerId + ", view_id: " +
+              this.membership.getViewId() + ", leader: " + this.leaderId.get() +
+              ", message:\"crashing\"}");
+      System.exit(0);
+    }
   }
 }

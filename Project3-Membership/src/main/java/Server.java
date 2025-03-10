@@ -1,7 +1,9 @@
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.Queue;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -16,9 +18,11 @@ public class Server {
   private final int port;
   private final String[] peerOrder;
   private final AtomicInteger leaderId;
+  private final int crashDelay;
+  private final Queue<RequestMessage> reqLog;
 
   public Server(BlockingQueue<String> queue, String hostname, int peerId, Membership membership,
-                int port, String[] peerOrder, AtomicInteger leaderId) {
+                int port, String[] peerOrder, AtomicInteger leaderId, int crashDelay) {
     this.queue = queue;
     this.hostname = hostname;
     this.peerId = peerId;
@@ -31,9 +35,17 @@ public class Server {
     this.port = port;
     this.peerOrder = peerOrder;
     this.leaderId = leaderId;
+    this.crashDelay = crashDelay;
+    this.reqLog = new ConcurrentLinkedQueue<>();
   }
 
   public void start() {
+    // start listening for heartbeat messages
+    int expectedHearbeatInterval = 5;
+    HeartbeatListener heartbeatListener = new HeartbeatListener(this.hostname, this.peerId,
+            this.port, expectedHearbeatInterval, this.membership, this.peerOrder, this.leaderId);
+    heartbeatListener.start();
+
     while (true) {
       // accept a connection
       Socket clientSocket;
@@ -44,8 +56,9 @@ public class Server {
       }
 
       // create a new thread to handle the connection
-      Thread clientHandler = new Thread(new ClientHandler(this.queue, this.hostname, this.peerId, clientSocket,
-              this.membership, this.port, this.peerOrder, this.leaderId));
+      Thread clientHandler = new Thread(new ClientHandler(this.queue, this.hostname, this.peerId,
+              clientSocket, this.membership, this.port, this.peerOrder, this.leaderId,
+              this.crashDelay, this.reqLog));
       clientHandler.start();
     }
   }
