@@ -6,51 +6,50 @@ import java.util.Queue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
+/**
+ * Responsible for managing a single client connection on the server side. It processes incoming
+ * messages from the client via TCP connection and updates the server's membership accordingly.
+ */
 public class ClientHandler implements Runnable {
-  private BlockingQueue<String> serverClientCommQueue;
-  private final String hostname;
+  private final BlockingQueue<String> serverClientCommQueue;
   private final int peerId;
-  private final Socket clientSocket;
   private final Membership membership;
-  private final int port;
-  private final String[] peerOrder;
   private final AtomicInteger leaderId;
   private final int crashDelay;
-  private final String clientHostname;
   private final int clientId;
   private final DataInputStream in;
   private final DataOutputStream out;
   private final Queue<String> reqLog;
 
-  public ClientHandler(BlockingQueue<String> serverClientCommQueue, String hostname, int peerId,
-                       Socket clientSocket, Membership membership, int port, String[] peerOrder,
+  /**
+   * Constructs a ClientHandler.
+   *
+   * @param serverClientCommQueue the queue that allows the server side of the peer to communicate
+   *                              with its client counterpart
+   * @param peerId the id of the local peer
+   * @param clientSocket the socket of the client being handled
+   * @param membership the membership that stores current view id and all alive peers
+   * @param peerOrder the order of the peers in the system
+   * @param leaderId the id of the leader process
+   * @param crashDelay a sleep that should start immediately after sending an JOIN message; when
+   *                   the sleep ends, the peer should crash (exit)
+   * @param reqLog the log that stores recent peer activity
+   */
+  public ClientHandler(BlockingQueue<String> serverClientCommQueue, int peerId,
+                       Socket clientSocket, Membership membership, String[] peerOrder,
                        AtomicInteger leaderId, int crashDelay, Queue<String> reqLog) {
     this.serverClientCommQueue = serverClientCommQueue;
-    this.hostname = hostname;
     this.peerId = peerId;
-    this.clientSocket = clientSocket;
     this.membership = membership;
-    this.port = port;
-    this.peerOrder = peerOrder;
     this.leaderId = leaderId;
     this.crashDelay = crashDelay;
-    this.clientHostname = Util.getHostname(this.clientSocket);
 
-    int clientId = 0;
-    for (int i = 0; i < this.peerOrder.length; i++) {
-      if (this.peerOrder[i].equals(this.clientHostname)) {
-        clientId = i + 1;
-        break;
-      }
-    }
-    if (clientId == 0) {
-      throw new IllegalArgumentException("Client handler error: Hostname not found in peer order");
-    }
-    this.clientId = clientId;
+    String clientHostname = Util.getHostname(clientSocket);
+    this.clientId = Util.getPeerId(peerOrder, clientHostname);
 
     try {
-      this.in = new DataInputStream(this.clientSocket.getInputStream());
-      this.out = new DataOutputStream(this.clientSocket.getOutputStream());
+      this.in = new DataInputStream(clientSocket.getInputStream());
+      this.out = new DataOutputStream(clientSocket.getOutputStream());
     } catch (IOException e) {
       throw new RuntimeException("Client handler error: " + e.getMessage());
     }

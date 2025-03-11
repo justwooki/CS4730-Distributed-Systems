@@ -13,7 +13,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Listens for heartbeat messages from other peers and checks for dead peers.
+ * Listens for heartbeat messages from other peers via UDP connection and checks for dead peers.
  */
 public class HeartbeatListener {
   private final String hostname;
@@ -31,13 +31,13 @@ public class HeartbeatListener {
   private final List<String> deadPeers; // carries only dead peers not yet removed from membership
 
   /**
-   * Constructor for HeartbeatListener class.
+   * Constructs a HeartbeatListener.
    *
    * @param hostname the hostname of the local machine
    * @param peerId the id of the local peer
    * @param port the port to listen for heartbeat messages on
    * @param expectedHearbeatInterval the expected interval (in seconds) between each heartbeat
-   * @param membership the membership object
+   * @param membership the membership that stores current view id and all alive peers
    * @param peerOrder the order of the peers in the system
    * @param leaderId the id of the leader
    */

@@ -7,7 +7,8 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Handles periodic broadcasting of heartbeat messages to all peers on the local network.
+ * Handles periodic broadcasting of heartbeat messages to all peers in the system via UDP
+ * connection.
  */
 public class HeartbeatSender {
   private final int port;
@@ -16,7 +17,7 @@ public class HeartbeatSender {
   private long startTime;
 
   /**
-   * Constructor for HeartbeatSender class.
+   * Constructs a HeartbeatSender.
    *
    * @param port the port to broacast the heartbeat message on
    * @param hearbeatInterval the interval (in seconds) between each heartbeat

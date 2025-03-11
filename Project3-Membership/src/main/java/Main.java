@@ -1,9 +1,16 @@
-import java.net.UnknownHostException;
-
+/**
+ * Main class to run the project.
+ */
 public class Main {
   private static final int PORT = 7000;
 
-  public static void main(String[] args) throws UnknownHostException, IllegalArgumentException {
+  /**
+   * Main method to run the project.
+   *
+   * @param args command line arguments
+   * @throws IllegalArgumentException if the command line arguments are invalid
+   */
+  public static void main(String[] args) throws IllegalArgumentException {
     Process process = readArgs(args);
     process.start();
   }
@@ -11,13 +18,11 @@ public class Main {
   /**
    * Read the command line arguments and return a Process object.
    *
-   * @param args the command line arguments
+   * @param args command line arguments
    * @return a Process object
    * @throws IllegalArgumentException if the command line arguments are invalid
-   * @throws UnknownHostException if the hostname cannot be determined
    */
-  private static Process readArgs(String[] args) throws IllegalArgumentException,
-          UnknownHostException {
+  private static Process readArgs(String[] args) throws IllegalArgumentException {
     String hostsfile = null;
     int startDelay = 0;
     int crashDelay = -1; // default value -1 means no crash

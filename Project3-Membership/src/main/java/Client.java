@@ -6,9 +6,12 @@ import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
+/**
+ * Connects to other peers in the system on the client side via TCP connection to send messages to
+ * other peer servers and maintain connection with its client counterpart.
+ */
 public class Client {
   BlockingQueue<String> serverClientCommQueue;
-  private final String hostname;
   private final int peerId;
   private final Membership membership;
   private final int port;
@@ -16,11 +19,22 @@ public class Client {
   private final AtomicInteger leaderId;
   private final int heartbeatInterval;
 
-  public Client(BlockingQueue<String> serverClientCommQueue, String hostname, int peerId,
+  /**
+   * Constructs a Client.
+   *
+   * @param serverClientCommQueue the queue that allows the server side of the peer to communicate
+   *                              with its client counterpart
+   * @param peerId the id of the local peer
+   * @param membership the membership that stores current view id and all alive peers
+   * @param port the port on which to establish a connection on
+   * @param peerOrder the order of the peers in the system
+   * @param leaderId the id of the leader process
+   * @param heartbeatInterval the interval (in seconds) between each heartbeat
+   */
+  public Client(BlockingQueue<String> serverClientCommQueue, int peerId,
                 Membership membership, int port, String[] peerOrder, AtomicInteger leaderId,
                 int heartbeatInterval) {
     this.serverClientCommQueue = serverClientCommQueue;
-    this.hostname = hostname;
     this.peerId = peerId;
     this.membership = membership;
     this.port = port;
@@ -29,6 +43,11 @@ public class Client {
     this.heartbeatInterval = heartbeatInterval;
   }
 
+  /**
+   * Start running the client. The client will connect to the leader to join the server and wait
+   * for messages from its server counterpart to execute client activities. It will also start
+   * sending heartbeats to other peers in the system to let everyone know it's alive.
+   */
   public void start() {
     Socket socket;
     DataOutputStream out = null;
