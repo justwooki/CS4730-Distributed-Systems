@@ -140,6 +140,7 @@ public class HeartbeatListener {
           message = "\"peer " + peerId + " unreachable\"";
         }
 
+        this.membership.setViewId(this.membership.getViewId() + 1);
         System.err.println("{peer_id: " + this.peerId + ", view_id: " +
                 this.membership.getViewId() + ", leader: " + this.leaderId.get() +
                 ", message:" + message + "}");
