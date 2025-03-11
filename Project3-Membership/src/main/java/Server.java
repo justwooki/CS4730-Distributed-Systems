@@ -10,7 +10,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * Server class to handle incoming connections.
  */
 public class Server {
-  private final BlockingQueue<String> queue;
+  private final BlockingQueue<String> serverClientCommQueue;
   private final String hostname;
   private final int peerId;
   private final ServerSocket serverSocket;
@@ -19,11 +19,13 @@ public class Server {
   private final String[] peerOrder;
   private final AtomicInteger leaderId;
   private final int crashDelay;
-  private final Queue<RequestMessage> reqLog;
+  private final Queue<String> reqLog;
+  private final int expectedHearbeatInterval;
 
-  public Server(BlockingQueue<String> queue, String hostname, int peerId, Membership membership,
-                int port, String[] peerOrder, AtomicInteger leaderId, int crashDelay) {
-    this.queue = queue;
+  public Server(BlockingQueue<String> serverClientCommQueue, String hostname, int peerId,
+                Membership membership, int port, String[] peerOrder, AtomicInteger leaderId,
+                int crashDelay, int heartbeatInterval) {
+    this.serverClientCommQueue = serverClientCommQueue;
     this.hostname = hostname;
     this.peerId = peerId;
     try {
@@ -37,11 +39,11 @@ public class Server {
     this.leaderId = leaderId;
     this.crashDelay = crashDelay;
     this.reqLog = new ConcurrentLinkedQueue<>();
+    this.expectedHearbeatInterval = heartbeatInterval;
   }
 
   public void start() {
     // start listening for heartbeat messages
-    int expectedHearbeatInterval = 5;
     HeartbeatListener heartbeatListener = new HeartbeatListener(this.hostname, this.peerId,
             this.port, expectedHearbeatInterval, this.membership, this.peerOrder, this.leaderId);
     heartbeatListener.start();
@@ -56,9 +58,9 @@ public class Server {
       }
 
       // create a new thread to handle the connection
-      Thread clientHandler = new Thread(new ClientHandler(this.queue, this.hostname, this.peerId,
-              clientSocket, this.membership, this.port, this.peerOrder, this.leaderId,
-              this.crashDelay, this.reqLog));
+      Thread clientHandler = new Thread(new ClientHandler(this.serverClientCommQueue,
+              this.hostname, this.peerId, clientSocket, this.membership, this.port, this.peerOrder,
+              this.leaderId, this.crashDelay, this.reqLog));
       clientHandler.start();
     }
   }

@@ -21,14 +21,14 @@ class Util {
   }
 
   /**
-   * Convert a list of integers to a comma-separated string.
+   * Convert a list of integers to a comma-separated string. Brackets are included.
    *
    * @param list list of integers
    * @return comma-separated string
    */
   protected static String listToString(List<Integer> list) {
     return list.stream().map(String::valueOf)
-            .collect(Collectors.joining(","));
+            .collect(Collectors.joining(",", "[", "]"));
   }
 
   /**
@@ -41,6 +41,24 @@ class Util {
   protected static List<Integer> stringToList(String str) {
     return Arrays.stream(str.substring(1, str.length() - 1).split(", "))
             .map(Integer::parseInt).toList();
+  }
+
+  /**
+   * Get the peer id of a given hostname.
+   *
+   * @param arr the array of hostnames
+   * @param peerHostname the hostname to get the id of
+   * @return the peer id
+   * @throws IllegalArgumentException if the peer id cannot be found
+   */
+  protected static int getPeerId(String[] arr, String peerHostname)
+          throws IllegalArgumentException {
+    for (int i = 0; i < arr.length; i++) {
+      if (arr[i].equals(peerHostname)) {
+        return i + 1;
+      }
+    }
+    throw new IllegalArgumentException("Peer ID cannot be found");
   }
 
   /**

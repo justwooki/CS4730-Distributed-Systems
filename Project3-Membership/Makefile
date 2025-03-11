@@ -1,7 +1,7 @@
 # Variables
 APP_NAME=prj3
 DOCKER_IMAGE=$(APP_NAME):latest
-DOCKER_COMPOSE_FILE=prj3-docker-compose-and-hostsfile/docker-compose-testcase-2.yml
+DOCKER_COMPOSE_FILE=prj3-docker-compose-and-hostsfile/docker-compose-testcase-3.yml
 
 # Default target
 all: build docker-build docker-compose-up

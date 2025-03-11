@@ -1,3 +1,4 @@
+import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
@@ -12,6 +13,7 @@ public class HeartbeatSender {
   private final int port;
   private final int hearbeatInterval;
   private final ScheduledExecutorService scheduler;
+  private long startTime;
 
   /**
    * Constructor for HeartbeatSender class.
@@ -29,6 +31,7 @@ public class HeartbeatSender {
    * Starts the heartbeat sender.
    */
   public void start() {
+    this.startTime = System.currentTimeMillis();
     this.scheduler.scheduleAtFixedRate(this::sendHeartbeat, 0, this.hearbeatInterval,
             TimeUnit.SECONDS);
   }
@@ -37,18 +40,26 @@ public class HeartbeatSender {
    * Sends a heartbeat message to all peers on the local network.
    */
   private void sendHeartbeat() {
-    try (DatagramSocket socket = new DatagramSocket()) {
-      socket.setBroadcast(true);
+    boolean connectionSuccessful = false;
+    while (!connectionSuccessful) {
+      try (DatagramSocket socket = new DatagramSocket()) {
+        socket.setBroadcast(true);
 
-      String message = "HEARTBEAT";
-      byte[] buffer = message.getBytes();
+        String message = "HEARTBEAT";
+        byte[] buffer = message.getBytes();
 
-      InetAddress address = InetAddress.getByName("255.255.255.255");
-      DatagramPacket packet = new DatagramPacket(buffer, buffer.length, address, this.port);
+        InetAddress address = InetAddress.getByName("255.255.255.255");
+        DatagramPacket packet = new DatagramPacket(buffer, buffer.length, address, this.port);
 
-      socket.send(packet);
-    } catch (Exception e) {
-      throw new RuntimeException("HeartbeatSender error: " + e.getMessage());
+        socket.send(packet);
+        connectionSuccessful = true;
+      } catch (IOException ignored) {
+        // retry connection
+      }
     }
+  }
+
+  private long getTime() {
+    return (System.currentTimeMillis() - startTime) / 1000; // Convert to seconds
   }
 }

@@ -7,41 +7,54 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class Client {
-  BlockingQueue<String> queue;
+  BlockingQueue<String> serverClientCommQueue;
   private final String hostname;
   private final int peerId;
   private final Membership membership;
   private final int port;
   private final String[] peerOrder;
   private final AtomicInteger leaderId;
+  private final int heartbeatInterval;
 
-  public Client(BlockingQueue<String> queue, String hostname, int peerId, Membership membership,
-                int port, String[] peerOrder, AtomicInteger leaderId) {
-    this.queue = queue;
+  public Client(BlockingQueue<String> serverClientCommQueue, String hostname, int peerId,
+                Membership membership, int port, String[] peerOrder, AtomicInteger leaderId,
+                int heartbeatInterval) {
+    this.serverClientCommQueue = serverClientCommQueue;
     this.hostname = hostname;
     this.peerId = peerId;
     this.membership = membership;
     this.port = port;
     this.peerOrder = peerOrder;
     this.leaderId = leaderId;
+    this.heartbeatInterval = heartbeatInterval;
   }
 
   public void start() {
+    Socket socket;
+    DataOutputStream out = null;
+
+    boolean connectionSuccessful = false;
+    while (!connectionSuccessful) {
+      try {
+        socket = new Socket(this.peerOrder[this.leaderId.get() - 1], this.port);
+        out = new DataOutputStream(socket.getOutputStream());
+        connectionSuccessful = true;
+      } catch (IOException ignored) {
+        // retry connection
+      }
+    }
+
+    // start sending heartbeat messages
+    HeartbeatSender heartbeatSender = new HeartbeatSender(this.port, heartbeatInterval);
+    heartbeatSender.start();
+
     try {
-      Socket socket = new Socket(this.peerOrder[this.leaderId.get() - 1], this.port);
-      DataOutputStream out = new DataOutputStream(socket.getOutputStream());
-
-      // start sending heartbeat messages
-      int heartbeatInterval = 5;
-      HeartbeatSender heartbeatSender = new HeartbeatSender(this.port, heartbeatInterval);
-      heartbeatSender.start();
-
       out.writeUTF("JOIN");
-
+      
       while (true) {
-        String msg = this.queue.peek();
+        String msg = this.serverClientCommQueue.peek();
         if (msg != null && !msg.startsWith("ToServer:")) {
-          Util.dequeueMessage(this.queue);
+          Util.dequeueMessage(this.serverClientCommQueue);
           processMessage(msg);
         }
       }
@@ -63,7 +76,7 @@ public class Client {
         broadcastReq(msg); // broadcast REQ message and receive OK messages
 
         // let server know all OK messages are have been received
-        Util.queueMessage(this.queue, "ToServer:OK");
+        Util.queueMessage(this.serverClientCommQueue, "ToServer:OK");
       }
       case "NEWVIEW" -> broadcastNewView(msg);
       default -> throw new IllegalArgumentException("Client error: Invalid message");
@@ -101,10 +114,18 @@ public class Client {
     String[] parts = msg.split(":");
     int requestId = Integer.parseInt(parts[1]);
     int viewId = Integer.parseInt(parts[2]);
+    String operationType = parts[3];
 
     for (Integer i : allMembers) {
       if (i == this.peerId) {
         continue;
+      }
+
+      if (operationType.equals("DEL")) {
+        int deadPeerId = Integer.parseInt(parts[4]);
+        if (i == deadPeerId) {
+          continue;
+        }
       }
 
       String memberHostname = this.peerOrder[i - 1];
@@ -123,6 +144,7 @@ public class Client {
         throw new RuntimeException("Client error: Mismatching view ID");
       }
 
+      in.close();
       out.close();
       memberSocket.close();
     }

@@ -111,12 +111,15 @@ public class Process {
   public void start() {
     Util.sleep(this.startDelay * 1000);
 
-    BlockingQueue<String> queue = new LinkedBlockingQueue<>();
+    BlockingQueue<String> serverClientCommQueue = new LinkedBlockingQueue<>();
+    int heartbeatInterval = 1;
 
-    Thread serverThread = new Thread(() -> new Server(queue, this.hostname, this.peerId,
-            this.membership, this.port, this.peerOrder, this.leaderId, this.crashDelay).start());
-    Thread clientThread = new Thread(() -> new Client(queue, this.hostname, this.peerId,
-            this.membership, this.port, this.peerOrder, this.leaderId).start());
+    Thread serverThread = new Thread(() -> new Server(serverClientCommQueue, this.hostname,
+            this.peerId, this.membership, this.port, this.peerOrder, this.leaderId,
+            this.crashDelay, heartbeatInterval).start());
+    Thread clientThread = new Thread(() -> new Client(serverClientCommQueue, this.hostname,
+            this.peerId, this.membership, this.port, this.peerOrder, this.leaderId,
+            heartbeatInterval).start());
 
     serverThread.start();
     clientThread.start();

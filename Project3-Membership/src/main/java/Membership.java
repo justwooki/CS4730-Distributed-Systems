@@ -82,7 +82,7 @@ public final class Membership {
     if (!this.peers.contains(peer)) {
       throw new IllegalArgumentException("Peer not found");
     }
-    this.peers.remove(peer);
+    this.peers.remove(Integer.valueOf(peer));
     this.viewId++;
   }
 
