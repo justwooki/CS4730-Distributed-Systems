@@ -1,4 +1,4 @@
-# Project 2: Chandi-Lamport
+# Project 3: Membership
 Justin Kim
 
 ## Instructions
