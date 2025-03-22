@@ -19,22 +19,6 @@ public class Process {
   private final int port;
 
   /**
-   * Constructor for Process class.
-   *
-   * @param hostsfile the path to the file that contains the list of hostnames that the processes
-   *                  are running on; the hostnames are expected to be separated by newlines and
-   *                  listed in the order of their process IDs
-   * @param startDelay a sleep that should occur at the start of the program - sleeps for "delay"
-   *                   seconds before starting any aspects of the protocol
-   * @param crashDelay  a sleep that should start immediately after sending an JOIN message; when
-   *                    the sleep ends, the peer should crash (exit)
-   * @param leaderCrash should only be passed to the starting leader, which waits for all hosts in
-   *                    hostfile to join, sends a REQ message (of type DEL) to all hosts except the
-   *                    next leader, and crashes (exit)
-   * @throws IllegalArgumentException if the hostsfile cannot be read for some reason
-   */
-
-  /**
    * Constructs a Process.
    *
    * @param hostsfile the path to the file that contains the list of hostnames that the processes
