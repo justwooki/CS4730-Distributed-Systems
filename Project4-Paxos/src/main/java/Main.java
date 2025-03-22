@@ -23,28 +23,7 @@ public class Main {
     if (process != null) {
       process.start();
     }
-//    System.out.println(extractAcceptors("hostsfile-testcase2.txt").stream().map(ProcessInfo::getId));
   }
-
-//  private static List<ProcessInfo> extractAcceptors(String hostsfile) throws IllegalArgumentException {
-//    String targetRole = "acceptor5";
-//
-//    try {
-//      return Files.readAllLines(Paths.get(hostsfile)).stream().filter(line -> {
-//        String[] parts = line.split(":");
-//        if (parts.length < 2) {
-//          return false;
-//        }
-//        return Arrays.asList(parts[1].split(",")).contains(targetRole);
-//      }).map(line -> {
-//        String peerName = line.split(":")[0];
-//        int peerId = Character.getNumericValue(peerName.charAt(peerName.length() - 1));
-//        return new ProcessInfo(peerId, peerName);
-//      }).toList();
-//    } catch (IOException e) {
-//      throw new IllegalArgumentException("Proposer error: Issue with reading hostsfile: " +
-//              e.getMessage());
-//    }
 
   private static Process constructProcess(String[] args) throws IllegalArgumentException {
     String hostsfile = null;
@@ -58,7 +37,7 @@ public class Main {
           if (i + 1 < args.length) {
             hostsfile = args[++i];
           } else {
-            throw new IllegalArgumentException("Missing hostsfile argument");
+            throw new IllegalArgumentException("Main error: Missing hostsfile argument");
           }
         }
         case "-v" -> {
@@ -80,14 +59,14 @@ public class Main {
     }
 
     if (hostsfile == null) {
-      throw new IllegalArgumentException("Missing hostsfile argument");
+      throw new IllegalArgumentException("Main error: Missing hostsfile argument");
     }
 
     String name;
     try {
       name = InetAddress.getLocalHost().getHostName();
     } catch (UnknownHostException e) {
-      throw new RuntimeException("Process error: Unable to determine hostname: " +
+      throw new RuntimeException("Main error: Unable to determine hostname: " +
               e.getMessage());
     }
     int id = Character.getNumericValue(name.charAt(name.length() - 1));
@@ -95,7 +74,7 @@ public class Main {
     switch (getRole(hostsfile, name)) {
       case "proposer" -> {
         if (value == '\u0000') {
-          throw new IllegalArgumentException("Missing value argument");
+          throw new IllegalArgumentException("Main error: Missing value argument");
         }
         return new Proposer(id, name, hostsfile, value, delay);
       }
