@@ -127,14 +127,19 @@ public class Proposer extends Process {
       throw new RuntimeException("Proposer error: Thread interrupted");
     }
 
-    // initiate proposal number
-    double proposalNum = Double.parseDouble("1." + this.info.getId());
+    boolean acceptedProposal = false;
+    double proposalNum = Double.parseDouble("0." + this.info.getId());
 
-    // broadcast prepare
-    handlePrepare(proposalNum);
+    // if a proposal ever fails, try again with new proposal
+    while(!acceptedProposal) {
+      proposalNum += 1;
 
+      // broadcast prepare
+      handlePrepare(proposalNum);
 
-    // broadcast accept
+      // broadcast accept
+      acceptedProposal = handleAccept(proposalNum);
+    }
   }
 
   /**
@@ -149,7 +154,7 @@ public class Proposer extends Process {
     AtomicInteger ackCount = new AtomicInteger(0);
 
     // execute broadcasting and acknowledgment collection concurrently
-    new Thread(() -> broadcastPrepare(msg, msgRec)).start();
+    new Thread(() -> broadcast(msg, msgRec)).start();
     new Thread(() -> waitForPrepareAck(proposalNum, ackCount, msgRec)).start();
 
     // the method concludes when the proposer has received a majority of acknowledgements
@@ -161,18 +166,17 @@ public class Proposer extends Process {
   }
 
   /**
-   * Broadcasts the Prepare message to all acceptors. After the message is sent, a response will
-   * be expected from each acceptor. This response is queued to be handled by a different method
-   * that will wait for acknowledgements.
+   * Broadcasts a message to all acceptors. After the message is sent, a response will be expected
+   * from each acceptor. This response is queued to be handled by a different method that will wait
+   * for acknowledgements.
    *
    * @param msg the message to broadcast
    * @param messagesReceived the queue holding the responses
    * @throws RuntimeException if there are any issues with connecting to any acceptor, sending the
    *                          message, or receiving it
    */
-  private void broadcastPrepare(String msg, BlockingQueue<String> messagesReceived)
+  private void broadcast(String msg, BlockingQueue<String> messagesReceived)
           throws RuntimeException {
-    // Broadcast message to acceptors
     for (ProcessInfo acceptor : this.acceptors) {
       new Thread(() -> {
         try (
@@ -222,14 +226,88 @@ public class Proposer extends Process {
         throw new RuntimeException("Proposer error: Received invalid prepare acknowledgment");
       }
 
-      // if any accepted values returned, replace value with it for highest accepted proposal
-      if (acceptedValue != '\u0000' && acceptedProposal > proposalNum) {
-        this.value = acceptedValue;
+      // print received message
+      System.err.println(Util.prepareMsg(senderId, "received", messageType,
+              Util.charToStr(acceptedValue), acceptedProposal));
+
+      // updated number of acknowledgements received
+      ackCount.getAndIncrement();
+    }
+  }
+
+  /**
+   * Handle the broadcasting and acknowledgement of the Accept message.
+   *
+   * @param proposalNum the proposal number
+   * @return true if value is accepted else false if value is rejected
+   */
+  private boolean handleAccept(double proposalNum) {
+    String msg = Util.prepareMsg(this.info.getId(), "sent", "accept",
+            Util.charToStr(this.value), proposalNum);
+    BlockingQueue<String> msgRec = new LinkedBlockingQueue<>();
+    AtomicInteger ackCount = new AtomicInteger(0);
+    BlockingQueue<Double> minProposals = new LinkedBlockingQueue<>();
+
+    // execute broadcasting and acknowledgment collection concurrently
+    new Thread(() -> broadcast(msg, msgRec)).start();
+    new Thread(() -> waitForAcceptAck(ackCount, msgRec, minProposals)).start();
+
+    // the method concludes when the proposer has received a majority of acknowledgements
+    while (true) {
+      if (ackCount.get() >= (this.totalProcesses / 2) + 1) {
+        break;
+      }
+    }
+
+    // check for any rejections
+    for (Double minProp : minProposals) {
+      if (minProp > proposalNum) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  /**
+   * Waits for an Accept Acknowledgement from each acceptor after sending an Accept broadcast.
+   *
+   * @param ackCount the number of acknowledgements received so far
+   * @param messagesReceived the queue holding the responses from the acceptors
+   * @param minProposals the queue that will hold min proposals returned by acceptors
+   * @throws RuntimeException if there are any issues retrieving the response or the response
+   *                          received is invalid
+   */
+  private void waitForAcceptAck(AtomicInteger ackCount, BlockingQueue<String> messagesReceived,
+                                BlockingQueue<Double> minProposals) {
+    while (ackCount.get() < this.acceptors.size()) {
+      // get received message
+      String[] msgRec;
+      try {
+        msgRec = Util.unpackMsg(messagesReceived.take());
+      } catch (InterruptedException e) {
+        throw new RuntimeException("Proposer error: " + e.getMessage());
+      }
+
+      int senderId = Integer.parseInt(msgRec[0]);
+      String messageType = msgRec[2];
+      char acceptedValue = Util.strToChar(msgRec[3]);
+      double minProposal = Double.parseDouble(msgRec[4]);
+
+      if (!messageType.equals("accept_ack")) {
+        throw new RuntimeException("Proposer error: Received invalid prepare acknowledgment");
+      }
+
+      // save received minProposal value
+      try {
+        minProposals.put(minProposal);
+      } catch (InterruptedException e) {
+        throw new RuntimeException("Proposer error: " + e.getMessage());
       }
 
       // print received message
       System.err.println(Util.prepareMsg(senderId, "received", messageType,
-              Util.charToStr(acceptedValue), acceptedProposal));
+              Util.charToStr(acceptedValue), minProposal));
 
       // updated number of acknowledgements received
       ackCount.getAndIncrement();

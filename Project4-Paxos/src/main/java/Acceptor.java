@@ -12,12 +12,12 @@ import java.util.List;
 
 /**
  * An acceptor is a type of process that will accept a value that is proposed to them under certain
- * conditions following the Paxos algorithm. Each proposal keeps track of an up-to-date proposal
- * number and an accepted value that gets updated by its proposers.
+ * conditions following the Paxos algorithm.
  */
 public class Acceptor extends Process {
   private final List<ProcessInfo> proposers;
   private double minProposal;
+  private double acceptedProposal;
   private char acceptedValue;
 
   /**
@@ -32,6 +32,7 @@ public class Acceptor extends Process {
     super(id, name);
     this.proposers = extractProposers(hostsfile);
     this.minProposal = 0.0;
+    this.acceptedProposal = 0.0;
     this.acceptedValue = '\u0000';
   }
 
@@ -48,6 +49,7 @@ public class Acceptor extends Process {
     this(id, name, hostsfile);
     this.acceptedValue = acceptedValue;
     this.minProposal = 0.0;
+    this.acceptedProposal = 0.0;
   }
 
   /**
@@ -128,11 +130,11 @@ public class Acceptor extends Process {
     System.err.println(Util.prepareMsg(senderId, "received", messageType,
             Util.charToStr(value), proposalNum));
 
-    if (messageType.equals("prepare")) {
-      return handlePrepare(proposalNum);
-    } else {
-      return messageType;
-    }
+    return switch (messageType) {
+      case "prepare" -> handlePrepare(proposalNum);
+      case "accept" -> handleAccept(proposalNum, value);
+      default -> throw new RuntimeException("Acceptor error: Unknown message type received");
+    };
   }
 
   /**
@@ -142,12 +144,32 @@ public class Acceptor extends Process {
    * @return the response to the proposer
    */
   private String handlePrepare(double proposalNum) {
-    if (proposalNum > minProposal) {
-      minProposal = proposalNum;
+    if (proposalNum > this.minProposal) {
+      this.minProposal = proposalNum;
     }
 
     String msg = Util.prepareMsg(this.info.getId(), "sent", "prepare_ack",
-            Util.charToStr(this.acceptedValue), this.minProposal);
+            Util.charToStr(this.acceptedValue), this.acceptedProposal);
+    System.err.println(msg);
+
+    return msg;
+  }
+
+  /**
+   * Handles an Accept message received by a proposer and prepares a response.
+   *
+   * @param proposalNum the proposal number received from a proposer
+   * @return the response to the proposer
+   */
+  private String handleAccept(double proposalNum, char value) {
+    if (proposalNum >= this.minProposal) {
+      this.minProposal = proposalNum;
+      this.acceptedProposal = proposalNum;
+      this.acceptedValue = value;
+    }
+
+    String msg = Util.prepareMsg(this.info.getId(), "sent", "accept_ack",
+            Util.charToStr(this.acceptedValue), this.acceptedProposal);
     System.err.println(msg);
 
     return msg;
