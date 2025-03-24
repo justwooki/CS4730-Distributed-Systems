@@ -5,17 +5,12 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.nio.file.Files;
-import java.nio.file.Paths;
-import java.util.Arrays;
-import java.util.List;
 
 /**
  * An acceptor is a type of process that will accept a value that is proposed to them under certain
  * conditions following the Paxos algorithm.
  */
 public class Acceptor extends Process {
-  private final List<ProcessInfo> proposers;
   private double minProposal;
   private double acceptedProposal;
   private char acceptedValue;
@@ -30,56 +25,9 @@ public class Acceptor extends Process {
    */
   public Acceptor(int id, String name, String hostsfile) {
     super(id, name);
-    this.proposers = extractProposers(hostsfile);
     this.minProposal = 0.0;
     this.acceptedProposal = 0.0;
     this.acceptedValue = '\u0000';
-  }
-
-  /**
-   * Constructs a new Acceptor object. Each acceptor has a list of proposers they may accept a
-   * value from. This information is found in the given hostsfile.
-   *
-   * @param id the unique ID of the process
-   * @param name the hostname of the process
-   * @param hostsfile the path to the file containing information on all processes
-   * @param acceptedValue the initial accepted value
-   */
-  protected Acceptor(int id, String name, String hostsfile, char acceptedValue) {
-    this(id, name, hostsfile);
-    this.acceptedValue = acceptedValue;
-    this.minProposal = 0.0;
-    this.acceptedProposal = 0.0;
-  }
-
-  /**
-   * Extracts the proposers of the acceptors from the given hostsfile.
-   *
-   * @param hostsfile the path to the file containing information on all processes
-   * @return the lists of proposers
-   * @throws IllegalArgumentException if the hostsfile cannot be read for some reason
-   */
-  private List<ProcessInfo> extractProposers(String hostsfile) throws IllegalArgumentException {
-    try {
-      List<String> lines = Files.readAllLines(Paths.get(hostsfile));
-
-      return Arrays.stream(lines.stream()
-                      .filter(line -> line.startsWith(info.getName())).toList().get(0)
-                      .split(":")[1].split(","))
-              .map(role -> {
-                int proposerId = Character.getNumericValue(role.charAt(role.length() - 1));
-                String proposerName = lines.stream()
-                        .map(line -> line.split(":"))
-                        .filter(line -> line[1].contains("proposer" + proposerId))
-                        .toList().get(0)[0];
-                int proposerProcessId =
-                        Character.getNumericValue(proposerName.charAt(proposerName.length() - 1));
-                return new ProcessInfo(proposerProcessId, proposerName);
-              }).toList();
-    } catch (IOException e) {
-      throw new IllegalArgumentException("Acceptor error: Issue with reading hostsfile: " +
-              e.getMessage());
-    }
   }
 
   @Override
@@ -144,6 +92,7 @@ public class Acceptor extends Process {
    * @return the response to the proposer
    */
   private String handlePrepare(double proposalNum) {
+    System.out.println("our value: " + this.acceptedValue);
     if (proposalNum > this.minProposal) {
       this.minProposal = proposalNum;
     }

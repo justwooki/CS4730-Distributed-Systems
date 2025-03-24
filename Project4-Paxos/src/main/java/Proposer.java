@@ -152,15 +152,28 @@ public class Proposer extends Process {
             "n/a", proposalNum);
     BlockingQueue<String> msgRec = new LinkedBlockingQueue<>();
     AtomicInteger ackCount = new AtomicInteger(0);
+    BlockingQueue<ProposalValuePair> acceptedProposalValue = new LinkedBlockingQueue<>();
 
     // execute broadcasting and acknowledgment collection concurrently
     new Thread(() -> broadcast(msg, msgRec)).start();
-    new Thread(() -> waitForPrepareAck(proposalNum, ackCount, msgRec)).start();
+    new Thread(() -> waitForPrepareAck(ackCount, msgRec, acceptedProposalValue)).start();
 
-    // the method concludes when the proposer has received a majority of acknowledgements
+    // wait for proposer to receive the majority of acknowledgements
     while (true) {
       if (ackCount.get() >= (this.totalProcesses / 2) + 1) {
         break;
+      }
+    }
+
+    // if any accepted values returned, replace value with it for highest accepted proposal
+    double highestAcceptedProposal = 0.0;
+    for (ProposalValuePair pair : acceptedProposalValue) {
+      double acceptedProposal = pair.getProposalNum();
+      char acceptedValue = pair.getValue();
+
+      if (acceptedValue != '\u0000' && acceptedProposal > highestAcceptedProposal) {
+        this.value = acceptedValue;
+        highestAcceptedProposal = acceptedProposal;
       }
     }
   }
@@ -200,14 +213,14 @@ public class Proposer extends Process {
   /**
    * Waits for a Prepare Acknowledgement from each acceptor after sending a Prepare broadcast.
    *
-   * @param proposalNum the proposal number
    * @param ackCount the number of acknowledgements received so far
    * @param messagesReceived the queue holding the responses from the acceptors
    * @throws RuntimeException if there are any issues retrieving the response or the response
    *                          received is invalid
    */
-  private void waitForPrepareAck(double proposalNum, AtomicInteger ackCount,
-                                 BlockingQueue<String> messagesReceived) throws RuntimeException {
+  private void waitForPrepareAck(AtomicInteger ackCount, BlockingQueue<String> messagesReceived,
+                                 BlockingQueue<ProposalValuePair> acceptedProposalValue)
+          throws RuntimeException {
     while (ackCount.get() < this.acceptors.size()) {
       // get received message
       String[] msgRec;
@@ -224,6 +237,13 @@ public class Proposer extends Process {
 
       if (!messageType.equals("prepare_ack")) {
         throw new RuntimeException("Proposer error: Received invalid prepare acknowledgment");
+      }
+
+      // save received minProposal value
+      try {
+        acceptedProposalValue.put(new ProposalValuePair(acceptedProposal, acceptedValue));
+      } catch (InterruptedException e) {
+        throw new RuntimeException("Proposer error: " + e.getMessage());
       }
 
       // print received message
@@ -252,7 +272,7 @@ public class Proposer extends Process {
     new Thread(() -> broadcast(msg, msgRec)).start();
     new Thread(() -> waitForAcceptAck(ackCount, msgRec, minProposals)).start();
 
-    // the method concludes when the proposer has received a majority of acknowledgements
+    // wait for proposer to receive the majority of acknowledgements
     while (true) {
       if (ackCount.get() >= (this.totalProcesses / 2) + 1) {
         break;
