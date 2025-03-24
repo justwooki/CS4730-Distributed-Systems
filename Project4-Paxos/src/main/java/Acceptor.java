@@ -132,7 +132,7 @@ public class Acceptor extends Process {
 
     return switch (messageType) {
       case "prepare" -> handlePrepare(proposalNum);
-      case "accept" -> handleAccept(proposalNum, value);
+      case "accept" -> handleAccept(senderId, proposalNum, value);
       default -> throw new RuntimeException("Acceptor error: Unknown message type received");
     };
   }
@@ -158,14 +158,19 @@ public class Acceptor extends Process {
   /**
    * Handles an Accept message received by a proposer and prepares a response.
    *
+   * @param senderId the ID of the proposer sending the Accept message
    * @param proposalNum the proposal number received from a proposer
    * @return the response to the proposer
    */
-  private String handleAccept(double proposalNum, char value) {
+  private String handleAccept(int senderId, double proposalNum, char value) {
     if (proposalNum >= this.minProposal) {
       this.minProposal = proposalNum;
       this.acceptedProposal = proposalNum;
       this.acceptedValue = value;
+
+      // print chosen value
+      System.err.println(Util.prepareMsg(senderId, "chose", "chose",
+              Util.charToStr(this.acceptedValue), this.acceptedProposal));
     }
 
     String msg = Util.prepareMsg(this.info.getId(), "sent", "accept_ack",
