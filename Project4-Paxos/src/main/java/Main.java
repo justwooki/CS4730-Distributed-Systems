@@ -5,11 +5,9 @@ import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.util.Arrays;
-import java.util.List;
 
 /**
- * Main class to run the project.
+ * Main class to run the Paxos program.
  */
 public class Main {
   /**
@@ -25,6 +23,13 @@ public class Main {
     }
   }
 
+  /**
+   * Construct and return a new process based on the given arguments.
+   *
+   * @param args the given arguments that hold the properties of the process
+   * @return a new process
+   * @throws IllegalArgumentException if the hostsfile cannot be read for some reason
+   */
   private static Process constructProcess(String[] args) throws IllegalArgumentException {
     String hostsfile = null;
     char value = '\u0000';
@@ -58,10 +63,12 @@ public class Main {
       }
     }
 
+    // hostsname can't be null
     if (hostsfile == null) {
       throw new IllegalArgumentException("Main error: Missing hostsfile argument");
     }
 
+    // get hostname and id of process
     String name;
     try {
       name = InetAddress.getLocalHost().getHostName();
@@ -71,6 +78,7 @@ public class Main {
     }
     int id = Character.getNumericValue(name.charAt(name.length() - 1));
 
+    // get the role of process (proposer/acceptor) and return the process
     switch (getRole(hostsfile, name)) {
       case "proposer" -> {
         if (value == '\u0000') {
@@ -86,6 +94,15 @@ public class Main {
     return null;
   }
 
+  /**
+   * Gets the role of the process from the given hostsfile based on the given hostname of the
+   * process. Process roles are divided into Proposer and Acceptor.
+   *
+   * @param hostsfile the path to the file containing information on the process
+   * @param name the hostname of the process
+   * @return the role of the process that is found
+   * @throws IllegalArgumentException if the hostsfile cannot be read for some reason
+   */
   private static String getRole(String hostsfile, String name) throws IllegalArgumentException {
     try {
       return Files.readAllLines(Paths.get(hostsfile)).stream()

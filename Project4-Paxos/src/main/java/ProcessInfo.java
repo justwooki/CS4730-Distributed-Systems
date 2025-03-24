@@ -9,7 +9,7 @@ public final class ProcessInfo {
   private final String name;
 
   /**
-   * Constructs a ProcessInfo object belonging to a process.
+   * Constructs a new ProcessInfo object belonging to a process.
    * @param id the id of the process
    * @param name the name of the process
    */
