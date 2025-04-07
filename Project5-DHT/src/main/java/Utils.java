@@ -56,12 +56,22 @@ public final class Utils {
   }
 
   /**
-   * Extracts numeric portion from the peer ID.
+   * Extracts numeric portion from an ID.
    *
-   * @param peerId the peer ID string
-   * @return the numeric portion of the peer ID
+   * @param id the ID as a string
+   * @return the numeric portion of the ID
    */
-  public static int extractPeerIdNum(String peerId) {
-    return Integer.parseInt(peerId.replaceAll("\\D", ""));
+  public static int extractIdNum(String id) {
+    return Integer.parseInt(id.replaceAll("\\D", ""));
+  }
+
+  /**
+   * Extracts the hostname portion from an ID.
+   *
+   * @param id the ID
+   * @return the hostname portion of the ID
+   */
+  public static String extractHostname(String id) {
+    return id.replaceAll("\\d", "");
   }
 }

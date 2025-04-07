@@ -16,4 +16,4 @@ COPY dockerfile-things/objects* /app/out/
 WORKDIR /app/out
 
 # Run the main class
-ENTRYPOINT ["java", "main.java.Peer"]
+ENTRYPOINT ["java", "main.java.Client"]

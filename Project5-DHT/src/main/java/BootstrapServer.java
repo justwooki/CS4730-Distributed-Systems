@@ -37,8 +37,8 @@ public final class BootstrapServer {
   public void start() {
     try (ServerSocket serverSocket = new ServerSocket(Utils.PORT)) {
       while (true) {
-        Socket clientSocket = serverSocket.accept();
-        new Thread(() -> handleConnection(clientSocket)).start();
+        Socket socket = serverSocket.accept();
+        new Thread(() -> handleConnection(socket)).start();
       }
     } catch (IOException e) {
       throw new RuntimeException("Boostrap error: " + e.getMessage());
@@ -46,14 +46,14 @@ public final class BootstrapServer {
   }
 
   /**
-   * Handles each connection with a client. It reads the message from the peer and leaves it to
-   * another helper method to handle the message.
+   * Handles each connection. It reads the message and leaves it to another helper method to handle
+   * it.
    *
-   * @param clientSocket the socket of the client
+   * @param socket the socket
    */
-  private void handleConnection(Socket clientSocket) {
+  private void handleConnection(Socket socket) {
     try (
-            DataInputStream in = new DataInputStream(clientSocket.getInputStream());
+            DataInputStream in = new DataInputStream(socket.getInputStream());
     ) {
       String msg = in.readUTF();
       handleMessage(msg);
@@ -70,15 +70,19 @@ public final class BootstrapServer {
   private void handleMessage(String msg) {
     Map<String, String> msgRec = Utils.unpackMsg(msg);
 
-    switch (msgRec.get("message_type")) {
+    switch (msgRec.get("operation_type")) {
       case "JOIN" -> handlePeerJoining(msgRec);
       case "PRED_ASSIGNED", "SUCC_ASSIGNED" -> {
         this.joinUpdateCount++;
-        if (this.joinUpdateCount == 4) {
+        int numPeersThatWillUpdate = 4;
+        if (this.joinUpdateCount == numPeersThatWillUpdate) {
           broadcastNewPeerJoined();
           this.joinUpdateCount = 0;
         }
       }
+      case "STORE", "RETRIEVE" -> handleClientRequest(msg);
+      case "OBJ_STORED", "OBJ_RETRIEVED", "OBJ_NOT_FOUND" ->
+              handleReportToClient(msg, msgRec.get("client_id"));
       default -> throw new RuntimeException("Boostrap error: unknown message type");
     }
   }
@@ -127,13 +131,13 @@ public final class BootstrapServer {
     String pred_id = this.ring.get((peerIdx == 0) ? this.ring.size() - 1 : peerIdx - 1);
     String msg = Utils.prepareMsg(new LinkedHashMap<>() {{
       put("peer_id", peerId);
-      put("message_type", "REASSIGN_PREDECESSOR");
+      put("operation_type", "REASSIGN_PREDECESSOR");
       put("new_id", pred_id);
     }});
 
     try (
-            Socket socket = new Socket(peerId, Utils.PORT);
-            DataOutputStream out = new DataOutputStream(socket.getOutputStream())
+            Socket peerSocket = new Socket(peerId, Utils.PORT);
+            DataOutputStream out = new DataOutputStream(peerSocket.getOutputStream())
     ) {
       out.writeUTF(msg);
     } catch (IOException e) {
@@ -158,13 +162,13 @@ public final class BootstrapServer {
     String succ_id = this.ring.get((peerIdx == this.ring.size() - 1) ? 0 : peerIdx + 1);
     String msg = Utils.prepareMsg(new LinkedHashMap<>() {{
       put("peer_id", peerId);
-      put("message_type", "REASSIGN_SUCCESSOR");
+      put("operation_type", "REASSIGN_SUCCESSOR");
       put("new_id", succ_id);
     }});
 
     try (
-            Socket socket = new Socket(peerId, Utils.PORT);
-            DataOutputStream out = new DataOutputStream(socket.getOutputStream())
+            Socket peerSocket = new Socket(peerId, Utils.PORT);
+            DataOutputStream out = new DataOutputStream(peerSocket.getOutputStream())
     ) {
       out.writeUTF(msg);
     } catch (IOException e) {
@@ -172,28 +176,6 @@ public final class BootstrapServer {
     }
 
     return succ_id;
-  }
-
-  /**
-   * Broadcasts a message to all peers in the ring indicating that a new peer has joined. The
-   * entire ring is also printed to the console.
-   */
-  private void broadcastNewPeerJoined() {
-    System.err.println("[" + String.join(" ", this.ring) + "]");
-
-    for (String peer : this.ring) {
-      try (
-              Socket socket = new Socket(peer, Utils.PORT);
-              DataOutputStream out = new DataOutputStream(socket.getOutputStream())
-      ){
-        String msg = Utils.prepareMsg(new LinkedHashMap<>() {{
-          put("message_type", "NEW_PEER_JOINED");
-        }});
-        out.writeUTF(msg);
-      } catch (IOException e) {
-        throw new RuntimeException("Boostrap error: " + e.getMessage());
-      }
-    }
   }
 
   /**
@@ -205,7 +187,64 @@ public final class BootstrapServer {
    */
   private int binarySearch(String peerId) {
     return Collections.binarySearch(this.ring, peerId,
-            Comparator.comparingInt(Utils::extractPeerIdNum));
+            Comparator.comparingInt(Utils::extractIdNum));
+  }
+
+  /**
+   * Broadcasts a message to all peers in the ring indicating that a new peer has joined. The
+   * entire ring is also printed to the console.
+   */
+  private void broadcastNewPeerJoined() {
+    System.err.println("[" + String.join(" ", this.ring) + "]");
+
+    for (String peer : this.ring) {
+      try (
+              Socket peerSocket = new Socket(peer, Utils.PORT);
+              DataOutputStream out = new DataOutputStream(peerSocket.getOutputStream())
+      ){
+        String msg = Utils.prepareMsg(new LinkedHashMap<>() {{
+          put("operation_type", "NEW_PEER_JOINED");
+        }});
+        out.writeUTF(msg);
+      } catch (IOException e) {
+        throw new RuntimeException("Boostrap error: " + e.getMessage());
+      }
+    }
+  }
+
+  /**
+   * Handles a client request to store or retrieve an object. It forwards the request to the first
+   * peer on the ring.
+   *
+   * @param msg the message received from the client to be forwarded to the first peer
+   */
+  private void handleClientRequest(String msg) {
+    try (
+            Socket peerSocket = new Socket(this.ring.get(0), Utils.PORT);
+            DataOutputStream out = new DataOutputStream(peerSocket.getOutputStream())
+    ) {
+      out.writeUTF(msg);
+    } catch (IOException e) {
+      throw new RuntimeException("Boostrap error: " + e.getMessage());
+    }
+  }
+
+  /**
+   * Handles a message received from a peer indicating that a client request has been completed. It
+   * forwards the message to the client.
+   *
+   * @param msg the message received from the peer
+   * @param clientId the ID of the client to whom the message should be forwarded
+   */
+  private void handleReportToClient(String msg, String clientId) {
+    try (
+            Socket clientSocket = new Socket(Utils.extractHostname(clientId), Utils.PORT);
+            DataOutputStream out = new DataOutputStream(clientSocket.getOutputStream())
+    ) {
+      out.writeUTF(msg);
+    } catch (IOException e) {
+      throw new RuntimeException("Boostrap error: " + e.getMessage());
+    }
   }
 
   /**

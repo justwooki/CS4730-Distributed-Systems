@@ -9,6 +9,9 @@ COPY . /app
 RUN find /app/src -name "*.java" > sources.txt
 RUN javac @sources.txt -d /app/out
 
+# Copy object files into /app/out
+COPY dockerfile-things/objects* /app/out/
+
 # Set the working directory to the compiled classes
 WORKDIR /app/out
 
