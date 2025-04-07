@@ -33,7 +33,7 @@ public class Acceptor extends Process {
   @Override
   public void start() {
     new Thread(() -> {
-      try(ServerSocket acceptorSocket = new ServerSocket(Util.PORT)) {
+      try (ServerSocket acceptorSocket = new ServerSocket(Util.PORT)) {
         while (true) {
           Socket proposerSocket = acceptorSocket.accept();
           new Thread(() -> handleConnection(proposerSocket)).start();

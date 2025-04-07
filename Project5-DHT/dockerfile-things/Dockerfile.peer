@@ -1,0 +1,16 @@
+FROM openjdk:17-jdk-slim
+
+WORKDIR /app
+
+# Copy the entire project directory
+COPY . /app
+
+# Compile the Java files
+RUN find /app/src -name "*.java" > sources.txt
+RUN javac @sources.txt -d /app/out
+
+# Set the working directory to the compiled classes
+WORKDIR /app/out
+
+# Run the main class
+ENTRYPOINT ["java", "main.java.Peer"]
